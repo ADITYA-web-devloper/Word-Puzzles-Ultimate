@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Puzzles Ultimate</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.min.js"></script>
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            light: '#6D28D9', // Violet-600
+                            dark: '#4C1D95',  // Violet-900
+                        },
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                        'pop-in': 'popIn 0.3s ease-out',
+                        'shake': 'shake 0.5s ease-in-out',
+                        'flash-red': 'flashRed 0.5s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        popIn: {
+                            '0%': { opacity: '0', transform: 'scale(0.9)' },
+                            '100%': { opacity: '1', transform: 'scale(1)' },
+                        },
+                        shake: {
+                            '0%, 100%': { transform: 'translateX(0)' },
+                            '10%, 30%, 50%, 70%, 90%': { transform: 'translateX(-5px)' },
+                            '20%, 40%, 60%, 80%': { transform: 'translateX(5px)' },
+                        },
+                        flashRed: {
+                            '0%, 100%': { backgroundColor: 'transparent' },
+                            '50%': { backgroundColor: '#FECACA' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; 
+        }
+        
+        .btn {
+            @apply px-4 py-3 rounded-lg font-semibold text-white shadow-md transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-opacity-75;
+        }
+        .btn-primary {
+            @apply bg-violet-600 hover:bg-violet-700 focus:ring-violet-500;
+        }
+        .btn-secondary {
+            @apply bg-gray-500 hover:bg-gray-600 focus:ring-gray-400;
+        }
+        .btn-green {
+            @apply bg-green-500 hover:bg-green-600 focus:ring-green-400;
+        }
+        .btn-locked {
+            @apply bg-gray-300 text-gray-500 cursor-not-allowed shadow-none hover:scale-100;
+        }
+
+        /* Anagram Puzzle Styles */
+        .anagram-source-tile, .anagram-answer-slot {
+            @apply w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 flex items-center justify-center text-xl sm:text-2xl md:text-3xl font-bold rounded-lg shadow-md cursor-pointer transition-all;
+        }
+        
+        .anagram-source-tile {
+            @apply bg-white text-gray-800 border-2 border-gray-300 hover:bg-gray-100;
+        }
+        .anagram-source-tile.disabled {
+            @apply opacity-20 cursor-not-allowed;
+        }
+
+        .anagram-answer-slot {
+            @apply bg-violet-100 border-2 border-dashed border-violet-400 text-violet-700;
+        }
+        .anagram-answer-slot.filled {
+            @apply bg-white border-solid border-violet-500;
+        }
+
+        /* Word Search Grid Styles */
+        .wordsearch-grid {
+            @apply grid border-2 border-gray-300 rounded-lg shadow-inner bg-white select-none gap-0.5 sm:gap-1;
+        }
+        .grid-cell {
+            /* Adjusted sizes for better fit on mobile for 12x12 grids */
+            @apply w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center text-xs sm:text-lg md:text-xl font-bold uppercase cursor-pointer transition-all duration-150 border border-gray-200 bg-white;
+        }
+        .grid-cell:hover {
+            @apply bg-violet-100;
+        }
+        .grid-cell.selected {
+            @apply bg-violet-500 text-white ring-2 ring-violet-700 !important;
+        }
+        .grid-cell.found {
+            @apply bg-green-500 text-white !important;
+        }
+        .grid-cell.hint {
+            @apply animate-pulse bg-yellow-300;
+        }
+        .grid-cell.wrong {
+            @apply animate-flash-red bg-red-200 text-red-800;
+        }
+
+        .word-list-item {
+            @apply text-sm md:text-lg text-gray-700 transition-all;
+        }
+        .word-list-item.found {
+            @apply line-through text-green-600 font-medium;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900">
+
+    <div id="app" class="max-w-5xl mx-auto p-2 md:p-6 min-h-screen">
+        <div class="flex items-center justify-center min-h-[80vh]">
+            <h1 class="text-2xl font-bold text-violet-600">Loading...</h1>
+        </div>
+    </div>
+
+    <div id="modal-container" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 hidden animate-fade-in">
+        <div id="modal-content" class="bg-white rounded-lg shadow-2xl p-6 md:p-8 w-full max-w-md animate-pop-in">
+        </div>
+    </div>
+
+    <script>
+    // --- 1. DOM ELEMENTS ---
+    const app = document.getElementById('app');
+    const modalContainer = document.getElementById('modal-container');
+    const modalContent = document.getElementById('modal-content');
+
+    // --- 2. GAME DATA ---
+    const gameData = [
+        { 
+            difficulty: 'Easy', 
+            levels: [
+                { id: 'e1', type: 'anagram', answer: 'CATS', clue: 'Pets that meow' },
+                { id: 'e2', type: 'anagram', answer: 'DOGS', clue: 'Man\'s best friend' },
+                { id: 'e3', type: 'anagram', answer: 'FISH', clue: 'Lives in water' },
+                { id: 'e4', type: 'anagram', answer: 'BIRD', clue: 'Has wings and flies' },
+                { id: 'e5', type: 'anagram', answer: 'TREE', clue: 'Has leaves and trunk' },
+                { id: 'e6', type: 'anagram', answer: 'MILK', clue: 'White drink from cows' },
+                { id: 'e7', type: 'anagram', answer: 'CAKE', clue: 'Birthday dessert' },
+                { id: 'e8', type: 'anagram', answer: 'BABY', clue: 'A very young human' },
+                { id: 'e9', type: 'anagram', answer: 'BOOK', clue: 'Pages to read' },
+                { id: 'e10', type: 'anagram', answer: 'BALL', clue: 'Round sports toy' },
+                { id: 'e11', type: 'anagram', answer: 'DOOR', clue: 'Walk through to enter' },
+                { id: 'e12', type: 'anagram', answer: 'HOME', clue: 'Where you live' },
+                { id: 'e13', type: 'anagram', answer: 'STAR', clue: 'Shines in night sky' },
+                { id: 'e14', type: 'anagram', answer: 'MOON', clue: 'Orbits the Earth' },
+                { id: 'e15', type: 'anagram', answer: 'RAIN', clue: 'Water from clouds' },
+                { id: 'e16', type: 'anagram', answer: 'SNOW', clue: 'Cold white flakes' },
+                { id: 'e17', type: 'anagram', answer: 'WIND', clue: 'Moving air' },
+                { id: 'e18', type: 'anagram', answer: 'FIRE', clue: 'Hot and burning' },
+                { id: 'e19', type: 'anagram', answer: 'GOLD', clue: 'Precious yellow metal' },
+                { id: 'e20', type: 'anagram', answer: 'KING', clue: 'Male ruler' },
+                { id: 'e21', type: 'anagram', answer: 'LION', clue: 'King of the jungle' },
+                { id: 'e22', type: 'anagram', answer: 'BEAR', clue: 'Big furry animal' },
+                { id: 'e23', type: 'anagram', answer: 'DUCK', clue: 'Bird that quacks' },
+                { id: 'e24', type: 'anagram', answer: 'FROG', clue: 'Green hopper' },
+                { id: 'e25', type: 'anagram', answer: 'LOVE', clue: 'Deep affection' },
+                { id: 'e26', type: 'anagram', answer: 'BLUE', clue: 'Color of the sky' },
+                { id: 'e27', type: 'anagram', answer: 'GOOD', clue: 'Opposite of bad' },
+                { id: 'e28', type: 'anagram', answer: 'JUMP', clue: 'Leap into the air' },
+                { id: 'e29', type: 'anagram', answer: 'WALK', clue: 'Move on feet' },
+                { id: 'e30', type: 'anagram', answer: 'PLAY', clue: 'Have fun' },
+            ]
+        },
+        { 
+            difficulty: 'Medium', 
+            levels: [
+                { id: 'm1', type: 'anagram', answer: 'FRIEND', clue: 'A buddy or pal' },
+                { id: 'm2', type: 'anagram', answer: 'SCHOOL', clue: 'Place of learning' },
+                { id: 'm3', type: 'anagram', answer: 'SUMMER', clue: 'The hottest season' },
+                { id: 'm4', type: 'anagram', answer: 'WINTER', clue: 'The coldest season' },
+                { id: 'm5', type: 'anagram', answer: 'DOCTOR', clue: 'Treats sick people' },
+                { id: 'm6', type: 'anagram', answer: 'FAMILY', clue: 'Parents and children' },
+                { id: 'm7', type: 'anagram', answer: 'ANIMAL', clue: 'A living creature' },
+                { id: 'm8', type: 'anagram', answer: 'GARDEN', clue: 'Place for plants' },
+                { id: 'm9', type: 'anagram', answer: 'YELLOW', clue: 'Color of the sun' },
+                { id: 'm10', type: 'anagram', answer: 'ORANGE', clue: 'Fruit and a color' },
+                { id: 'm11', type: 'anagram', answer: 'PURPLE', clue: 'Blue mixed with red' },
+                { id: 'm12', type: 'anagram', answer: 'WINDOW', clue: 'See through wall' },
+                { id: 'm13', type: 'anagram', answer: 'MARKET', clue: 'Place to buy food' },
+                { id: 'm14', type: 'anagram', answer: 'SOCCER', clue: 'Kicking ball sport' },
+                { id: 'm15', type: 'anagram', answer: 'TENNIS', clue: 'Racket sport' },
+                { id: 'm16', type: 'anagram', answer: 'PLANET', clue: 'Earth is one' },
+                { id: 'm17', type: 'anagram', answer: 'ROCKET', clue: 'Space vehicle' },
+                { id: 'm18', type: 'anagram', answer: 'GUITAR', clue: 'String instrument' },
+                { id: 'm19', type: 'anagram', answer: 'CAMERA', clue: 'Takes photos' },
+                { id: 'm20', type: 'anagram', answer: 'JUNGLE', clue: 'Tropical forest' },
+            ]
+        },
+        {
+            difficulty: 'Hard',
+            levels: [
+                { id: 'h1', type: 'wordsearch', size: 8, words: ['RED', 'BLUE', 'GREEN', 'PINK', 'GREY', 'TEAL', 'CYAN', 'GOLD'] },
+                { id: 'h2', type: 'wordsearch', size: 8, words: ['APPLE', 'LIME', 'PEAR', 'KIWI', 'PLUM', 'FIG', 'DATE'] },
+                { id: 'h3', type: 'wordsearch', size: 8, words: ['CAT', 'DOG', 'FISH', 'BIRD', 'MOUSE', 'SNAKE', 'PONY', 'DUCK'] },
+                { id: 'h4', type: 'wordsearch', size: 8, words: ['HEAD', 'ARM', 'LEG', 'FOOT', 'HAND', 'NOSE', 'EAR', 'EYE'] },
+                { id: 'h5', type: 'wordsearch', size: 8, words: ['HAT', 'COAT', 'SHOE', 'SOCK', 'TIE', 'VEST', 'BELT'] },
+                { id: 'h6', type: 'wordsearch', size: 8, words: ['SUN', 'RAIN', 'SNOW', 'WIND', 'FOG', 'HAIL', 'COLD', 'HOT'] },
+                { id: 'h7', type: 'wordsearch', size: 8, words: ['BED', 'BATH', 'RUG', 'LAMP', 'SOFA', 'DOOR', 'ROOF', 'WALL'] },
+                { id: 'h8', type: 'wordsearch', size: 8, words: ['PEN', 'INK', 'DESK', 'BOOK', 'MAP', 'ART', 'GYM', 'MATH'] },
+                { id: 'h9', type: 'wordsearch', size: 8, words: ['TREE', 'BUSH', 'LEAF', 'GRASS', 'ROCK', 'DIRT', 'SAND', 'MUD'] },
+                { id: 'h10', type: 'wordsearch', size: 8, words: ['CAR', 'BUS', 'JET', 'SHIP', 'TAXI', 'BIKE', 'BOAT', 'TRAIN'] },
+            ]
+        },
+        {
+            difficulty: 'Expert',
+            levels: [
+                { id: 'x1', type: 'wordsearch', size: 12, words: ['ORBIT', 'COMET', 'STAR', 'VENUS', 'MARS', 'MOON', 'EARTH', 'SPACE', 'PLUTO', 'NEBULA'] },
+                { id: 'x2', type: 'wordsearch', size: 12, words: ['PYTHON', 'JAVA', 'HTML', 'CODE', 'LINUX', 'DATA', 'LOGIC', 'BUG', 'ARRAY', 'LOOP'] },
+                { id: 'x3', type: 'wordsearch', size: 12, words: ['TIGER', 'ZEBRA', 'PANDA', 'SHARK', 'WHALE', 'EAGLE', 'CAMEL', 'KOALA', 'OTTER', 'LEMUR'] },
+                { id: 'x4', type: 'wordsearch', size: 12, words: ['ASIA', 'EUROPE', 'AFRICA', 'OHIO', 'ROME', 'PARIS', 'NILE', 'ALPS', 'TOKYO', 'LIMA'] },
+                { id: 'x5', type: 'wordsearch', size: 12, words: ['HAPPY', 'ANGRY', 'SAD', 'SCARED', 'PROUD', 'BRAVE', 'CALM', 'BORED', 'TIRED', 'SHY'] },
+            ]
+        }
+    ];
+
+    // --- 3. GRID GENERATION (CRITICAL: MUST RUN BEFORE RENDER) ---
+    
+    function generateWordSearchGrids() {
+        gameData.forEach(section => {
+            section.levels.forEach(level => {
+                if (level.type === 'wordsearch') {
+                    // Generate the grid and assign it to the level object
+                    level.grid = createValidGrid(level.words, level.size);
+                }
+            });
+        });
+        console.log("Grids Generated Successfully");
+    }
+
+    function createValidGrid(wordList, size) {
+        const directions = [[0, 1], [1, 0], [1, 1]]; // Horizontal, Vertical, Diagonal
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let attempts = 0;
+
+        while (attempts < 100) {
+            let grid = Array(size).fill(null).map(() => Array(size).fill(''));
+            let placedWords = [];
+            let sortedWords = [...wordList].sort((a, b) => b.length - a.length);
+            
+            for (let word of sortedWords) {
+                let placed = false;
+                let wordAttempts = 0;
+                
+                while (!placed && wordAttempts < 100) {
+                    const dir = directions[Math.floor(Math.random() * directions.length)];
+                    const row = Math.floor(Math.random() * size);
+                    const col = Math.floor(Math.random() * size);
+                    
+                    if (canPlaceWord(grid, word, row, col, dir, size)) {
+                        placeWord(grid, word, row, col, dir);
+                        placed = true;
+                    }
+                    wordAttempts++;
+                }
+                if (placed) placedWords.push(word);
+            }
+            
+            if (placedWords.length === wordList.length) {
+                // Fill empty spaces
+                for (let r = 0; r < size; r++) {
+                    for (let c = 0; c < size; c++) {
+                        if (grid[r][c] === '') {
+                            grid[r][c] = alphabet[Math.floor(Math.random() * alphabet.length)];
+                        }
+                    }
+                }
+                return grid;
+            }
+            attempts++;
+        }
+        // Fallback: Create a simple grid if generation fails (rare)
+        return Array(size).fill(null).map(() => Array(size).fill('A'));
+    }
+
+    function canPlaceWord(grid, word, row, col, dir, size) {
+        const endRow = row + (word.length - 1) * dir[0];
+        const endCol = col + (word.length - 1) * dir[1];
+        if (endRow >= size || endCol >= size) return false;
+        
+        for (let i = 0; i < word.length; i++) {
+            const r = row + i * dir[0];
+            const c = col + i * dir[1];
+            const cell = grid[r][c];
+            if (cell !== '' && cell !== word[i]) return false;
+        }
+        return true;
+    }
+
+    function placeWord(grid, word, row, col, dir) {
+        for (let i = 0; i < word.length; i++) {
+            grid[row + i * dir[0]][col + i * dir[1]] = word[i];
+        }
+    }
+
+    // EXECUTE GENERATION IMMEDIATELY
+    generateWordSearchGrids();
+
+    // --- 4. FLATTEN LEVELS (After generation) ---
+    const allLevels = gameData.reduce((acc, diff) => {
+        diff.levels.forEach(level => {
+            acc[level.id] = { ...level, difficulty: diff.difficulty };
+        });
+        return acc;
+    }, {});
+
+    // --- 5. STATE MANAGEMENT ---
+    const defaultState = {
+        completedLevels: [],
+        score: 0,
+        coins: 100,
+        soundEnabled: true,
+        currentStreak: 0,
+    };
+    
+    let gameState = {};
+    let tempGameState = {}; 
+    let gameTimer = null;
+    let timeElapsed = 0;
+
+    function loadGameState() {
+        const savedState = localStorage.getItem('wordPuzzleState');
+        gameState = savedState ? JSON.parse(savedState) : { ...defaultState };
+    }
+
+    function saveGameState() {
+        localStorage.setItem('wordPuzzleState', JSON.stringify(gameState));
+    }
+
+    function isLevelCompleted(levelId) {
+        return gameState.completedLevels.includes(levelId);
+    }
+    
+    function isLevelUnlocked(levelId) {
+        const levelIndex = Object.keys(allLevels).findIndex(id => id === levelId);
+        if (levelIndex === 0) return true;
+        const prevLevelId = Object.keys(allLevels)[levelIndex - 1];
+        return isLevelCompleted(prevLevelId);
+    }
+
+    // --- 6. AUDIO ---
+    let sounds = {}; 
+    async function playSound(soundName) {
+        if (!gameState.soundEnabled || typeof Tone === 'undefined' || !sounds.click) return;
+        try {
+            if (Tone.context.state !== 'running') Tone.start().catch(()=>{}); 
+            switch(soundName) {
+                case 'click': sounds.click.triggerAttackRelease('C4', '8n'); break;
+                case 'correct': sounds.correct.triggerAttackRelease('E5', '8n'); break;
+                case 'wrong': sounds.wrong.triggerAttackRelease('E3', '8n'); break;
+                case 'win': sounds.win.triggerAttackRelease(['C4', 'E4', 'G4', 'C5'], '8n'); break;
+                case 'levelComplete':
+                    const now = Tone.now();
+                    sounds.win.triggerAttackRelease('C4', '8n', now);
+                    sounds.win.triggerAttackRelease('E4', '8n', now + 0.1);
+                    sounds.win.triggerAttackRelease('G4', '8n', now + 0.2);
+                    sounds.win.triggerAttackRelease('C5', '8n', now + 0.3);
+                    break;
+            }
+        } catch (e) {}
+    }
+
+    // --- 7. RENDERING ---
+    function renderApp() {
+        const nextLevelId = Object.keys(allLevels).find(id => !isLevelCompleted(id));
+        app.innerHTML = `
+            <header class="flex items-center justify-between bg-white p-3 md:p-4 rounded-lg shadow-md mb-6">
+                <button data-action="goHome" class="text-lg md:text-2xl font-bold text-violet-600 hover:text-violet-800 transition-colors">
+                    Word Puzzles
+                </button>
+                <div class="flex items-center gap-3 md:gap-6">
+                    <div class="flex items-center gap-1 md:gap-2 text-base md:text-lg font-semibold">
+                        <i data-lucide="star" class="text-yellow-500 w-4 h-4 md:w-5 md:h-5"></i>
+                        <span id="score-display">${gameState.score}</span>
+                    </div>
+                    <div class="flex items-center gap-1 md:gap-2 text-base md:text-lg font-semibold">
+                        <i data-lucide="coins" class="text-amber-500 w-4 h-4 md:w-5 md:h-5"></i>
+                        <span id="coins-display">${gameState.coins}</span>
+                    </div>
+                    <button data-action="toggleSound" class="text-gray-600 hover:text-violet-600">
+                        <i data-lucide="${gameState.soundEnabled ? 'volume-2' : 'volume-x'}" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </header>
+            <main id="view-container" class="animate-fade-in"></main>
+        `;
+        
+        if (tempGameState.currentLevelId && allLevels[tempGameState.currentLevelId]) {
+            renderGameScreen(allLevels[tempGameState.currentLevelId]);
+        } else {
+            // If stored level doesn't exist, reset to home
+            tempGameState.currentLevelId = null;
+            renderHomeScreen(nextLevelId);
+        }
+        lucide.createIcons();
+    }
+
+    function updateHeader() {
+        document.getElementById('score-display').textContent = gameState.score;
+        document.getElementById('coins-display').textContent = gameState.coins;
+        const soundIcon = document.querySelector('[data-action="toggleSound"] i');
+        if (soundIcon) {
+            soundIcon.setAttribute('data-lucide', gameState.soundEnabled ? 'volume-2' : 'volume-x');
+            lucide.createIcons({ nodes: [soundIcon.parentElement] });
+        }
+    }
+
+    function renderHomeScreen(nextLevelId) {
+        document.getElementById('view-container').innerHTML = `
+            <div class="space-y-8">
+                ${gameData.map(difficultySection => `
+                    <section>
+                        <h2 class="text-xl md:text-2xl font-bold mb-4 text-gray-800 border-b-2 border-violet-200 pb-2 sticky top-0 bg-[#f3f4f6] z-10">${difficultySection.difficulty}</h2>
+                        <div class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 md:gap-4">
+                            ${difficultySection.levels.map((level, index) => {
+                                const completed = isLevelCompleted(level.id);
+                                const unlocked = isLevelUnlocked(level.id);
+                                const isNext = level.id === nextLevelId;
+                                let btnClass = unlocked ? (completed ? 'btn-green' : (isNext ? 'btn-primary animate-pulse' : 'btn-primary')) : 'btn-locked';
+                                let btnIcon = completed ? 'check' : (unlocked ? 'play' : 'lock');
+                                const diffChar = difficultySection.difficulty[0];
+                                return `
+                                    <button 
+                                        data-action="selectLevel" 
+                                        data-level-id="${level.id}" 
+                                        class="btn ${btnClass} aspect-square flex flex-col items-center justify-center text-lg p-1"
+                                        ${!unlocked ? 'disabled' : ''}
+                                    >
+                                        <i data-lucide="${btnIcon}" class="w-5 h-5 mb-1"></i>
+                                        <span class="font-bold text-sm">${diffChar}${index + 1}</span>
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </section>
+                `).join('')}
+                <footer class="text-center pt-8 pb-8">
+                    <button data-action="resetProgress" class="text-sm text-gray-500 hover:text-red-600 underline">Reset All Progress</button>
+                </footer>
+            </div>
+        `;
+        lucide.createIcons();
+    }
+
+    function renderGameScreen(level) {
+        timeElapsed = 0;
+        clearInterval(gameTimer);
+        gameTimer = setInterval(() => { timeElapsed++; }, 1000);
+
+        const viewContainer = document.getElementById('view-container');
+        viewContainer.innerHTML = `
+            <div class="bg-white p-3 md:p-6 rounded-lg shadow-xl max-w-4xl mx-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg md:text-2xl font-bold text-violet-700">${level.difficulty} - ${level.id.toUpperCase()}</h2>
+                    <div class="flex items-center gap-2 md:gap-4">
+                        <button data-action="useHint" class="btn btn-primary py-2 px-3 flex items-center gap-2 text-sm md:text-base"><i data-lucide="lightbulb" class="w-4 h-4 md:w-5 md:h-5"></i> Hint</button>
+                        <button data-action="goHome" class="text-gray-500 hover:text-red-600"><i data-lucide="x" class="w-8 h-8"></i></button>
+                    </div>
+                </div>
+                <div id="puzzle-container"></div>
+            </div>
+        `;
+        
+        if (level.type === 'anagram') renderAnagram(level);
+        else if (level.type === 'wordsearch') renderWordSearch(level);
+        lucide.createIcons();
+    }
+
+    function renderAnagram(level) {
+        const { answer, clue } = level;
+        tempGameState.anagramGuess = Array(answer.length).fill(null);
+        tempGameState.anagramSource = shuffleArray(answer.split(''));
+        document.getElementById('puzzle-container').innerHTML = `
+            <div class="flex flex-col items-center gap-6 md:gap-8 py-4">
+                <p class="text-lg md:text-2xl text-center text-gray-700 font-medium">${clue}</p>
+                <div id="anagram-answer" class="flex justify-center gap-2 md:gap-3 flex-wrap">
+                    ${tempGameState.anagramGuess.map((_, index) => `<button class="anagram-answer-slot" data-action="returnLetter" data-index="${index}"></button>`).join('')}
+                </div>
+                <div id="anagram-source" class="flex justify-center gap-2 md:gap-3 flex-wrap max-w-md p-4 bg-gray-100 rounded-lg">
+                    ${tempGameState.anagramSource.map((letter, index) => `<button class="anagram-source-tile" data-action="pickLetter" data-index="${index}">${letter}</button>`).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    function renderWordSearch(level) {
+        const { grid, words } = level;
+        
+        // SAFETY CHECK: If grid didn't generate for some reason
+        if (!grid || !Array.isArray(grid)) {
+            document.getElementById('puzzle-container').innerHTML = `<div class="text-red-500 text-center p-4">Error: Grid not generated. Please go back and try again.</div>`;
+            return;
+        }
+
+        tempGameState.wordSearchStart = null;
+        tempGameState.foundWords = [];
+        
+        document.getElementById('puzzle-container').innerHTML = `
+            <p class="text-center text-gray-600 mb-4 text-sm md:text-base">Tap the <strong>first</strong> letter, then the <strong>last</strong> letter.</p>
+            <div class="flex flex-col lg:flex-row gap-6 items-start justify-center">
+                <div class="wordsearch-grid mx-auto" style="grid-template-columns: repeat(${grid.length}, minmax(0, 1fr));">
+                    ${grid.map((row, r) => row.map((cell, c) => `
+                        <div class="grid-cell" data-action="gridClick" data-row="${r}" data-col="${c}">${cell}</div>
+                    `).join('')).join('')}
+                </div>
+                <div class="w-full lg:w-1/3 flex-shrink-0 bg-gray-50 p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-3 text-gray-800 border-b pb-2">Words to Find:</h3>
+                    <div class="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                        ${words.map(word => `<div class="word-list-item" data-word="${word}">${word}</div>`).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function renderModal(title, content, buttons) {
+        modalContent.innerHTML = `
+            <h2 class="text-2xl font-bold mb-4 text-center text-violet-700">${title}</h2>
+            <div class="text-gray-700 text-center space-y-4 mb-6">${content}</div>
+            <div class="flex justify-center gap-4">
+                ${buttons.map(btn => `<button class="btn ${btn.class}" data-action="${btn.action}">${btn.text}</button>`).join('')}
+            </div>
+        `;
+        modalContainer.classList.remove('hidden');
+        lucide.createIcons();
+    }
+    
+    function closeModal() {
+        modalContainer.classList.add('hidden');
+    }
+
+    // --- 8. GAME LOGIC ---
+    function handlePickLetter(index) {
+        const letter = tempGameState.anagramSource[index];
+        if (!letter) return;
+        const emptySlotIndex = tempGameState.anagramGuess.indexOf(null);
+        if (emptySlotIndex === -1) return;
+        playSound('click');
+        tempGameState.anagramGuess[emptySlotIndex] = { letter, sourceIndex: index };
+        tempGameState.anagramSource[index] = null;
+        updateAnagramUI();
+        if (tempGameState.anagramGuess.every(slot => slot !== null)) checkAnagramWin();
+    }
+
+    function handleReturnLetter(index) {
+        const slot = tempGameState.anagramGuess[index];
+        if (!slot) return;
+        playSound('click');
+        tempGameState.anagramSource[slot.sourceIndex] = slot.letter;
+        tempGameState.anagramGuess[index] = null;
+        updateAnagramUI();
+    }
+
+    function updateAnagramUI() {
+        const answerSlots = document.querySelectorAll('#anagram-answer .anagram-answer-slot');
+        answerSlots.forEach((slot, index) => {
+            const guess = tempGameState.anagramGuess[index];
+            if (guess) {
+                slot.textContent = guess.letter;
+                slot.classList.add('filled');
+            } else {
+                slot.textContent = '';
+                slot.classList.remove('filled');
+            }
+        });
+        const sourceTiles = document.querySelectorAll('#anagram-source .anagram-source-tile');
+        sourceTiles.forEach((tile, index) => {
+            const letter = tempGameState.anagramSource[index];
+            if (letter) {
+                tile.textContent = letter;
+                tile.classList.remove('disabled');
+                tile.disabled = false;
+            } else {
+                tile.textContent = '';
+                tile.classList.add('disabled');
+                tile.disabled = true;
+            }
+        });
+    }
+
+    function checkAnagramWin() {
+        const currentLevel = allLevels[tempGameState.currentLevelId];
+        const userGuess = tempGameState.anagramGuess.map(g => g.letter).join('');
+        if (userGuess === currentLevel.answer) {
+            playSound('win');
+            document.querySelectorAll('#anagram-answer .anagram-answer-slot').forEach(slot => {
+                slot.classList.remove('border-violet-400', 'border-dashed');
+                slot.classList.add('bg-green-100', 'border-green-500', 'text-green-700');
+            });
+            setTimeout(() => handleLevelComplete(), 1000);
+        } else {
+            playSound('wrong');
+            const answerBox = document.getElementById('anagram-answer');
+            answerBox.classList.add('animate-shake');
+            setTimeout(() => answerBox.classList.remove('animate-shake'), 500);
+        }
+    }
+    
+    function handleGridClick(row, col, targetElement) {
+        if (isNaN(row) || isNaN(col)) return;
+        playSound('click');
+        const cell = targetElement;
+        
+        if (!tempGameState.wordSearchStart) {
+            tempGameState.wordSearchStart = { row, col, cell };
+            cell.classList.add('selected');
+        } else {
+            const start = tempGameState.wordSearchStart;
+            const end = { row, col, cell };
+            start.cell.classList.remove('selected'); // Unhighlight start
+            checkWordSearchSelection(start, end);
+            tempGameState.wordSearchStart = null;
+        }
+    }
+
+    function checkWordSearchSelection(start, end) {
+        const currentLevel = allLevels[tempGameState.currentLevelId];
+        const { grid, words } = currentLevel;
+        const path = getPath(start, end);
+        if (!path) return;
+        
+        let selectedWord = '';
+        path.forEach(pos => { selectedWord += grid[pos.row][pos.col]; });
+        const reverseWord = selectedWord.split('').reverse().join('');
+        const foundWord = words.find(word => (word === selectedWord || word === reverseWord) && !tempGameState.foundWords.includes(word));
+
+        if (foundWord) {
+            playSound('correct');
+            tempGameState.foundWords.push(foundWord);
+            path.forEach(pos => {
+                const cell = document.querySelector(`.grid-cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
+                if(cell) cell.classList.add('found');
+            });
+            const listEl = document.querySelector(`.word-list-item[data-word="${foundWord}"]`);
+            if(listEl) listEl.classList.add('found');
+            if (tempGameState.foundWords.length === words.length) setTimeout(() => handleLevelComplete(), 500);
+        } else {
+            playSound('wrong');
+            path.forEach(pos => {
+                const cell = document.querySelector(`.grid-cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
+                if (cell) {
+                    cell.classList.add('wrong');
+                    setTimeout(() => cell.classList.remove('wrong'), 500);
+                }
+            });
+        }
+    }
+
+    function getPath(start, end) {
+        const path = [];
+        const dr = Math.sign(end.row - start.row);
+        const dc = Math.sign(end.col - start.col);
+        const isHorizontal = start.row === end.row;
+        const isVertical = start.col === end.col;
+        const isDiagonal = Math.abs(end.row - start.row) === Math.abs(end.col - start.col);
+
+        if (!isHorizontal && !isVertical && !isDiagonal) return null;
+        
+        let r = start.row;
+        let c = start.col;
+        let safety = 0;
+        while(safety < 100) {
+            path.push({ row: r, col: c });
+            if (r === end.row && c === end.col) break;
+            r += dr; c += dc; safety++;
+        }
+        return path;
+    }
+
+    function handleLevelComplete() {
+        clearInterval(gameTimer);
+        const levelId = tempGameState.currentLevelId;
+        if (isLevelCompleted(levelId)) { tempGameState.currentLevelId = null; renderApp(); return; }
+        
+        const level = allLevels[levelId];
+        let score = 0, coins = 0;
+        if (level.difficulty === 'Easy') { score = 100; coins = 10; }
+        else if (level.difficulty === 'Medium') { score = 200; coins = 20; }
+        else if (level.difficulty === 'Hard') { score = 400; coins = 40; }
+        else if (level.difficulty === 'Expert') { score = 800; coins = 80; }
+        
+        const timeBonus = Math.max(0, 100 - timeElapsed);
+        score += timeBonus;
+        gameState.currentStreak++;
+        const streakBonus = gameState.currentStreak * 10;
+        score += streakBonus; coins += streakBonus;
+
+        gameState.completedLevels.push(levelId);
+        gameState.score += score; gameState.coins += coins;
+        saveGameState();
+        tempGameState.currentLevelId = null;
+        playSound('levelComplete');
+        
+        renderModal(
+            'Level Complete!',
+            `<div class="space-y-2 text-lg"><p>Score: <span class="font-bold text-green-600">+${score}</span></p><p>Coins: <span class="font-bold text-amber-600">+${coins}</span></p><p>Time: <span class="font-bold">${timeElapsed}s</span></p><p>Streak: <span class="font-bold">${gameState.currentStreak}x</span></p></div>`,
+            [{ text: 'Next Level', action: 'nextLevel', class: 'btn-primary' }, { text: 'Back to Menu', action: 'goHome', class: 'btn-secondary' }]
+        );
+    }
+    
+    function handleUseHint() {
+        const hintCost = 25;
+        if (gameState.coins < hintCost) {
+            playSound('wrong');
+            renderModal('Not Enough Coins!', `<p>You need ${hintCost} coins to use a hint.</p>`, [{ text: 'OK', action: 'closeModal', class: 'btn-primary' }]);
+            return;
+        }
+        gameState.coins -= hintCost;
+        saveGameState();
+        updateHeader();
+        playSound('correct');
+        const level = allLevels[tempGameState.currentLevelId];
+        if (level.type === 'anagram') {
+            const firstWrongSlot = tempGameState.anagramGuess.findIndex((g, i) => !g || g.letter !== level.answer[i]);
+            if (firstWrongSlot !== -1) {
+                const correctLetter = level.answer[firstWrongSlot];
+                const wrongSlotWithCorrectLetter = tempGameState.anagramGuess.findIndex(g => g && g.letter === correctLetter);
+                if (wrongSlotWithCorrectLetter !== -1) handleReturnLetter(wrongSlotWithCorrectLetter);
+                const sourceIndex = tempGameState.anagramSource.findIndex(l => l === correctLetter);
+                if (sourceIndex !== -1) {
+                    if (tempGameState.anagramGuess[firstWrongSlot]) handleReturnLetter(firstWrongSlot);
+                    handlePickLetter(sourceIndex);
+                }
+            }
+        } else if (level.type === 'wordsearch') {
+            const unfoundWord = level.words.find(w => !tempGameState.foundWords.includes(w));
+            if (unfoundWord) {
+                const firstLetter = unfoundWord[0];
+                const cells = document.querySelectorAll('.grid-cell');
+                cells.forEach(cell => {
+                    if (cell.textContent.trim() === firstLetter && !cell.classList.contains('found')) {
+                        cell.classList.add('hint');
+                        setTimeout(() => cell.classList.remove('hint'), 1500);
+                    }
+                });
+            }
+        }
+    }
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    // --- 9. EVENT DELEGATION ---
+    document.body.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+        
+        switch (action) {
+            case 'toggleSound':
+                gameState.soundEnabled = !gameState.soundEnabled;
+                saveGameState();
+                updateHeader();
+                if (gameState.soundEnabled) playSound('click');
+                break;
+            case 'goHome': closeModal(); clearInterval(gameTimer); tempGameState = {}; renderApp(); break;
+            case 'selectLevel':
+                if (isLevelUnlocked(target.dataset.levelId)) { playSound('click'); tempGameState.currentLevelId = target.dataset.levelId; renderApp(); }
+                break;
+            case 'nextLevel':
+                closeModal();
+                const nextLevel = Object.keys(allLevels).find(id => !isLevelCompleted(id));
+                if (nextLevel) { tempGameState.currentLevelId = nextLevel; renderApp(); }
+                else renderModal("Game Over!", "<p>You are a Word Puzzle Master! You've beaten every level!</p>", [{ text: 'Reset Game', action: 'resetProgress', class: 'btn-primary' }]);
+                break;
+            case 'resetProgress':
+                closeModal();
+                renderModal('Are you sure?', '<p>This will erase all progress.</p>', [{ text: 'Reset', action: 'confirmReset', class: 'btn-secondary' }, { text: 'Cancel', action: 'closeModal', class: 'btn-primary' }]);
+                break;
+            case 'confirmReset': closeModal(); localStorage.removeItem('wordPuzzleState'); loadGameState(); renderApp(); break;
+            case 'closeModal': closeModal(); break;
+            case 'pickLetter': handlePickLetter(parseInt(target.dataset.index)); break;
+            case 'returnLetter': handleReturnLetter(parseInt(target.dataset.index)); break;
+            case 'gridClick': 
+                handleGridClick(parseInt(target.dataset.row), parseInt(target.dataset.col), target); 
+                break;
+            case 'useHint': handleUseHint(); break;
+        }
+    });
+
+    // --- 10. INITIALIZATION ---
+    window.addEventListener('load', () => {
+        if (typeof Tone !== 'undefined') {
+            try {
+                sounds = {
+                    click: new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 } }).toDestination(),
+                    correct: new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.2 } }).toDestination(),
+                    wrong: new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.2 } }).toDestination(),
+                    win: new Tone.PolySynth(Tone.Synth, { envelope: { attack: 0.01, decay: 0.1, sustain: 0.3, release: 0.4 } }).toDestination(),
+                };
+            } catch (e) { console.error("Error initializing sounds:", e); }
+        }
+        loadGameState();
+        renderApp();
+    });
+    </script>
+</body>
+</html>
